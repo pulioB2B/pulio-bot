@@ -15,9 +15,21 @@ export async function chatWithClaude(
     model: "claude-sonnet-4-20250514",
     max_tokens: 2048,
     system: systemPrompt,
+    tools: [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+      },
+    ],
     messages,
   });
-  return response.content[0].text;
+
+  // web_search 사용 시 여러 content block 중 텍스트만 추출
+  return response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
 }
 
 /**

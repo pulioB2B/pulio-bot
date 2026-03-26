@@ -1,4 +1,4 @@
-// src/slackbot/bot.js  ← 이 파일 내용으로 기존 bot.js를 교체하세요
+// src/slackbot/bot.js
 // Socket Mode → HTTP 방식으로 변경 (Render 배포용)
 
 import pkg from "@slack/bolt";
@@ -6,27 +6,29 @@ const { App, ExpressReceiver } = pkg;
 import { chatWithClaude, analyzeWithFile } from "../shared/claude.js";
 import { parseSlackFile, fetchGoogleSheet } from "../shared/file-parser.js";
 
-// ExpressReceiver를 만들어서 기존 Express 앱과 통합
 export function createExpressReceiver() {
   return new ExpressReceiver({
     signingSecret: process.env.SLACK_SIGNING_SECRET,
-    endpoints: "/slack/events", // Slack이 이 URL로 이벤트를 보냄
+    endpoints: "/slack/events",
   });
 }
 
 export function createSlackApp(receiver) {
   const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
-    receiver, // Socket Mode 대신 HTTP receiver 사용
+    receiver,
   });
 
   app.event("app_mention", async ({ event, client, say }) => {
     try {
-      await client.reactions.add({
-        channel: event.channel,
-        timestamp: event.ts,
-        name: "thinking_face",
-      });
+      // already_reacted 오류 방지
+      await client.reactions
+        .add({
+          channel: event.channel,
+          timestamp: event.ts,
+          name: "thinking_face",
+        })
+        .catch(() => {});
 
       const userText = event.text.replace(/<@[A-Z0-9]+>/g, "").trim();
 
@@ -72,16 +74,19 @@ export function createSlackApp(receiver) {
         return;
       }
 
-      // ── 일반 대화 ──
+      // ── 일반 대화 (웹 서치 포함) ──
       const history = await buildThreadHistory(client, event);
       const answer = await chatWithClaude(history);
       await say({ text: answer, thread_ts: event.ts });
 
-      await client.reactions.remove({
-        channel: event.channel,
-        timestamp: event.ts,
-        name: "thinking_face",
-      });
+      // 이모지 제거도 오류 방지
+      await client.reactions
+        .remove({
+          channel: event.channel,
+          timestamp: event.ts,
+          name: "thinking_face",
+        })
+        .catch(() => {});
     } catch (err) {
       console.error("슬랙봇 오류:", err);
       await say({ text: `❌ 오류: ${err.message}`, thread_ts: event.ts });
