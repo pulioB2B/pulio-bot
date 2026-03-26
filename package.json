@@ -1,0 +1,24 @@
+{
+  "name": "pullyo-bot",
+  "version": "1.0.0",
+  "description": "풀리오 슬랙봇 + VOC 분석기",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "@slack/bolt": "^3.21.0",
+    "@anthropic-ai/sdk": "^0.30.0",
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
