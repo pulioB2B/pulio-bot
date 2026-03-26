@@ -1,5 +1,6 @@
 // src/slackbot/bot.js
-import { App } from "@slack/bolt";
+import pkg from "@slack/bolt";
+const { App } = pkg;
 import { chatWithClaude, analyzeWithFile } from "../shared/claude.js";
 import { parseSlackFile, fetchGoogleSheet } from "../shared/file-parser.js";
 
