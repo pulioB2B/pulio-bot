@@ -6,42 +6,52 @@ import { analyzeVOC, buildSlackVOCMessage } from "./analyzer.js";
 const router = express.Router();
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 
-// VOC가 게시될 슬랙 채널 (환경변수로 관리)
 const VOC_CHANNEL = process.env.VOC_SLACK_CHANNEL ?? "#voc-접수";
 
-/**
- * POST /api/voc
- * 자사몰 폼 → 백엔드 서버가 이 엔드포인트로 전송
- *
- * Body:
- * {
- *   name: string,
- *   email: string,
- *   product: string,      // 제품명
- *   category: string,     // 문의 유형
- *   message: string,      // VOC 본문
- *   rating: number,       // 평점 (선택)
- *   secret: string        // VOC_SECRET 인증
- * }
- */
+// ── CORS 설정 ──────────────────────────────────────────────────────────────
+// 자사몰 도메인을 환경변수로 관리 (여러 개면 쉼표로 구분)
+// 예) VOC_ALLOWED_ORIGINS=https://pullyo.co.kr,https://www.pullyo.co.kr
+const ALLOWED_ORIGINS = process.env.VOC_ALLOWED_ORIGINS
+  ? process.env.VOC_ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+  : ["*"]; // 미설정 시 전체 허용 (개발용)
+
+function setCORS(req, res) {
+  const origin = req.headers.origin;
+
+  if (ALLOWED_ORIGINS.includes("*")) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+
+  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+// OPTIONS preflight 요청 처리 (브라우저가 POST 전에 먼저 보내는 요청)
+router.options("/voc", (req, res) => {
+  setCORS(req, res);
+  res.sendStatus(204);
+});
+
+// ── POST /api/voc ──────────────────────────────────────────────────────────
 router.post("/voc", async (req, res) => {
-  // 간단한 시크릿 인증 (프로덕션에서는 HMAC으로 교체 권장)
+  setCORS(req, res);
+
   if (req.body.secret !== process.env.VOC_SECRET) {
     return res.status(401).json({ error: "인증 실패" });
   }
 
   const vocData = req.body;
 
-  // 1) 빠르게 응답 (분석은 비동기로)
   res.json({ ok: true, message: "VOC 접수 완료" });
 
-  // 2) Claude 분석
   try {
     console.log(`[VOC] 새 접수: ${vocData.name} - ${vocData.category}`);
     const analysis = await analyzeVOC(vocData);
     const slackMessage = buildSlackVOCMessage(vocData, analysis);
 
-    // 3) 슬랙 채널에 게시
     await slack.chat.postMessage({
       channel: VOC_CHANNEL,
       text: `새 VOC 접수: ${vocData.name}`,
@@ -51,7 +61,6 @@ router.post("/voc", async (req, res) => {
     console.log("[VOC] 슬랙 게시 완료");
   } catch (err) {
     console.error("[VOC] 처리 오류:", err);
-    // 오류 발생 시 슬랙에 실패 알림
     await slack.chat
       .postMessage({
         channel: VOC_CHANNEL,
@@ -61,10 +70,10 @@ router.post("/voc", async (req, res) => {
   }
 });
 
-/**
- * GET /api/voc/health
- * 자사몰에서 연결 확인용
- */
-router.get("/voc/health", (_, res) => res.json({ ok: true }));
+// ── GET /api/voc/health ───────────────────────────────────────────────────
+router.get("/voc/health", (req, res) => {
+  setCORS(req, res);
+  res.json({ ok: true });
+});
 
 export default router;
