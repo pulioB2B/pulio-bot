@@ -1,27 +1,31 @@
-// src/index.js
+// src/index.js — HTTP 방식으로 변경 (Render 배포용)
 import "dotenv/config";
 import express from "express";
-import { createSlackApp } from "./slackbot/bot.js";
+import { createExpressReceiver, createSlackApp } from "./slackbot/bot-http.js";
 import vocRoutes from "./voc/routes.js";
 
 const PORT = process.env.PORT ?? 3000;
 
 async function main() {
-  // ── Express 서버 (VOC 수신용) ──
-  const expressApp = express();
-  expressApp.use(express.json());
-  expressApp.use("/api", vocRoutes);
+  // 1) Slack ExpressReceiver 생성 (내부적으로 Express 라우터 포함)
+  const receiver = createExpressReceiver();
 
-  expressApp.listen(PORT, () => {
-    console.log(`✅ VOC 서버 실행 중: http://localhost:${PORT}`);
-    console.log(`   VOC 엔드포인트: POST /api/voc`);
-  });
+  // 2) Slack 앱 초기화
+  createSlackApp(receiver);
 
-  // ── 슬랙 앱 (Socket Mode) ──
-  const slackApp = createSlackApp();
-  await slackApp.start();
-  console.log("✅ 풀리오 슬랙봇 실행 중 (Socket Mode)");
-  console.log("   @풀리오봇 으로 멘션하면 응답합니다");
+  // 3) receiver의 Express 앱에 VOC 라우터 추가
+  receiver.app.use(express.json());
+  receiver.app.use("/api", vocRoutes);
+
+  // 4) 헬스체크 (Render가 서버 살아있는지 확인용)
+  receiver.app.get("/", (_, res) => res.send("풀리오봇 running ✅"));
+
+  // 5) 서버 시작
+  await receiver.start(PORT);
+  console.log(`✅ 풀리오봇 HTTP 서버 실행 중: port ${PORT}`);
+  console.log(
+    `   Slack Events URL: https://your-render-url.onrender.com/slack/events`,
+  );
 }
 
 main().catch((err) => {

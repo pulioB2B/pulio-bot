@@ -1,21 +1,27 @@
-// src/slackbot/bot.js
+// src/slackbot/bot.js  ← 이 파일 내용으로 기존 bot.js를 교체하세요
+// Socket Mode → HTTP 방식으로 변경 (Render 배포용)
+
 import pkg from "@slack/bolt";
-const { App } = pkg;
+const { App, ExpressReceiver } = pkg;
 import { chatWithClaude, analyzeWithFile } from "../shared/claude.js";
 import { parseSlackFile, fetchGoogleSheet } from "../shared/file-parser.js";
 
-export function createSlackApp() {
+// ExpressReceiver를 만들어서 기존 Express 앱과 통합
+export function createExpressReceiver() {
+  return new ExpressReceiver({
+    signingSecret: process.env.SLACK_SIGNING_SECRET,
+    endpoints: "/slack/events", // Slack이 이 URL로 이벤트를 보냄
+  });
+}
+
+export function createSlackApp(receiver) {
   const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
-    signingSecret: process.env.SLACK_SIGNING_SECRET,
-    socketMode: true, // Socket Mode — 별도 public URL 불필요
-    appToken: process.env.SLACK_APP_TOKEN,
+    receiver, // Socket Mode 대신 HTTP receiver 사용
   });
 
-  // ─── 멘션 핸들러 (@풀리오봇 ...) ───────────────────────────────────────
   app.event("app_mention", async ({ event, client, say }) => {
     try {
-      // 타이핑 중 표시
       await client.reactions.add({
         channel: event.channel,
         timestamp: event.ts,
@@ -43,7 +49,7 @@ export function createSlackApp() {
             await say({ text: answer, thread_ts: event.ts });
           } catch (e) {
             await say({
-              text: `⚠️ 시트를 불러오지 못했어요: ${e.message}\n비공개 시트라면 CSV로 내보내서 첨부해주세요.`,
+              text: `⚠️ 시트를 불러오지 못했어요: ${e.message}`,
               thread_ts: event.ts,
             });
           }
@@ -66,12 +72,11 @@ export function createSlackApp() {
         return;
       }
 
-      // ── 일반 대화 (스레드 히스토리 유지) ──
+      // ── 일반 대화 ──
       const history = await buildThreadHistory(client, event);
       const answer = await chatWithClaude(history);
       await say({ text: answer, thread_ts: event.ts });
 
-      // 타이핑 이모지 제거
       await client.reactions.remove({
         channel: event.channel,
         timestamp: event.ts,
@@ -79,27 +84,21 @@ export function createSlackApp() {
       });
     } catch (err) {
       console.error("슬랙봇 오류:", err);
-      await say({
-        text: `❌ 오류가 발생했어요: ${err.message}`,
-        thread_ts: event.ts,
-      });
+      await say({ text: `❌ 오류: ${err.message}`, thread_ts: event.ts });
     }
   });
 
   return app;
 }
 
-// ── 스레드 대화 히스토리 → Claude messages 형식으로 변환 ──
 async function buildThreadHistory(client, event) {
   const messages = [];
-
   if (event.thread_ts) {
     const result = await client.conversations.replies({
       channel: event.channel,
       ts: event.thread_ts,
       limit: 20,
     });
-
     for (const msg of result.messages ?? []) {
       const isBotMessage = msg.bot_id != null;
       const cleanText = (msg.text ?? "").replace(/<@[A-Z0-9]+>/g, "").trim();
@@ -110,10 +109,8 @@ async function buildThreadHistory(client, event) {
       });
     }
   } else {
-    // 스레드 없는 첫 멘션
     const cleanText = event.text.replace(/<@[A-Z0-9]+>/g, "").trim();
     messages.push({ role: "user", content: cleanText });
   }
-
   return messages;
 }
