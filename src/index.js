@@ -1,7 +1,7 @@
 // src/index.js — HTTP 방식으로 변경 (Render 배포용)
 import "dotenv/config";
 import express from "express";
-import { createExpressReceiver, createSlackApp } from "./slackbot/bot-http.js";
+import { createExpressReceiver, createSlackApp } from "./slackbot/bot.js";
 import vocRoutes from "./voc/routes.js";
 
 const PORT = process.env.PORT ?? 3000;
